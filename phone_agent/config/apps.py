@@ -1,6 +1,9 @@
 """App name to package name mapping for supported applications."""
 
-APP_PACKAGES: dict[str, str] = {
+from phone_agent.config.automotive_apps import AUTOMOTIVE_APP_PACKAGES # New Import
+
+# Original APP_PACKAGES (mobile apps)
+APP_PACKAGES_MOBILE: dict[str, str] = {
     # Social & Messaging
     "微信": "com.tencent.mm",
     "QQ": "com.tencent.mobileqq",
@@ -186,6 +189,9 @@ APP_PACKAGES: dict[str, str] = {
     "Whatsapp": "com.whatsapp",
     "WhatsApp": "com.whatsapp",
 }
+
+# Combine mobile and automotive app packages
+APP_PACKAGES = {**APP_PACKAGES_MOBILE, **AUTOMOTIVE_APP_PACKAGES}
 
 
 def get_package_name(app_name: str) -> str | None:

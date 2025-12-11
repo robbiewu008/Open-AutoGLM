@@ -22,6 +22,7 @@ class AgentConfig:
     lang: str = "cn"
     system_prompt: str | None = None
     verbose: bool = True
+    display_id: int = 0 # New: Added display_id for multi-screen support
 
     def __post_init__(self):
         if self.system_prompt is None:
@@ -140,7 +141,10 @@ class PhoneAgent:
         self._step_count += 1
 
         # Capture current screen state
-        screenshot = get_screenshot(self.agent_config.device_id)
+        screenshot = get_screenshot(
+            device_id=self.agent_config.device_id,
+            display_id=self.agent_config.display_id # Pass display_id here
+        )
         current_app = get_current_app(self.agent_config.device_id)
 
         # Build messages

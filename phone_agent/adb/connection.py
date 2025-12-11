@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
+from phone_agent.log import logger
+
 
 class ConnectionType(Enum):
     """Type of ADB connection."""
@@ -70,6 +72,8 @@ class ADBConnection:
         if ":" not in address:
             address = f"{address}:5555"  # Default ADB port
 
+        logger.info(f"Attempting to connect to {address}...")
+
         try:
             result = subprocess.run(
                 [self.adb_path, "connect", address],
@@ -81,16 +85,24 @@ class ADBConnection:
             output = result.stdout + result.stderr
 
             if "connected" in output.lower():
+                logger.info(f"Successfully connected to {address}")
                 return True, f"Connected to {address}"
             elif "already connected" in output.lower():
+                logger.info(f"Already connected to {address}")
                 return True, f"Already connected to {address}"
             else:
-                return False, output.strip()
+                msg = output.strip()
+                logger.warning(f"Failed to connect to {address}: {msg}")
+                return False, msg
 
         except subprocess.TimeoutExpired:
-            return False, f"Connection timeout after {timeout}s"
+            msg = f"Connection timeout after {timeout}s"
+            logger.error(msg)
+            return False, msg
         except Exception as e:
-            return False, f"Connection error: {e}"
+            msg = f"Connection error: {e}"
+            logger.error(msg)
+            return False, msg
 
     def disconnect(self, address: str | None = None) -> tuple[bool, str]:
         """
@@ -102,6 +114,7 @@ class ADBConnection:
         Returns:
             Tuple of (success, message).
         """
+        logger.info(f"Disconnecting {address if address else 'all devices'}...")
         try:
             cmd = [self.adb_path, "disconnect"]
             if address:
@@ -109,11 +122,14 @@ class ADBConnection:
 
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
 
-            output = result.stdout + result.stderr
-            return True, output.strip() or "Disconnected"
+            output = (result.stdout + result.stderr).strip() or "Disconnected"
+            logger.info(f"Disconnect result: {output}")
+            return True, output
 
         except Exception as e:
-            return False, f"Disconnect error: {e}"
+            msg = f"Disconnect error: {e}"
+            logger.error(msg)
+            return False, msg
 
     def list_devices(self) -> list[DeviceInfo]:
         """
@@ -167,7 +183,7 @@ class ADBConnection:
             return devices
 
         except Exception as e:
-            print(f"Error listing devices: {e}")
+            logger.error(f"Error listing devices: {e}")
             return []
 
     def get_device_info(self, device_id: str | None = None) -> DeviceInfo | None:
@@ -233,6 +249,7 @@ class ADBConnection:
             The device must be connected via USB first.
             After this, you can disconnect USB and connect via WiFi.
         """
+        logger.info(f"Enabling TCP/IP on port {port} for device {device_id or 'default'}...")
         try:
             cmd = [self.adb_path]
             if device_id:
@@ -244,13 +261,17 @@ class ADBConnection:
             output = result.stdout + result.stderr
 
             if "restarting" in output.lower() or result.returncode == 0:
+                logger.info("ADB restarting in TCP/IP mode...")
                 time.sleep(2)  # Wait for ADB to restart
                 return True, f"TCP/IP mode enabled on port {port}"
             else:
+                logger.warning(f"Failed to enable TCP/IP: {output.strip()}")
                 return False, output.strip()
 
         except Exception as e:
-            return False, f"Error enabling TCP/IP: {e}"
+            msg = f"Error enabling TCP/IP: {e}"
+            logger.error(msg)
+            return False, msg
 
     def get_device_ip(self, device_id: str | None = None) -> str | None:
         """
@@ -292,11 +313,12 @@ class ADBConnection:
                     parts = line.strip().split()
                     if len(parts) >= 2:
                         return parts[1].split("/")[0]
-
+            
+            logger.warning(f"Could not find IP address for device {device_id}")
             return None
 
         except Exception as e:
-            print(f"Error getting device IP: {e}")
+            logger.error(f"Error getting device IP: {e}")
             return None
 
     def restart_server(self) -> tuple[bool, str]:
@@ -306,6 +328,7 @@ class ADBConnection:
         Returns:
             Tuple of (success, message).
         """
+        logger.info("Restarting ADB server...")
         try:
             # Kill server
             subprocess.run(
@@ -319,10 +342,13 @@ class ADBConnection:
                 [self.adb_path, "start-server"], capture_output=True, timeout=5
             )
 
+            logger.info("ADB server restarted successfully")
             return True, "ADB server restarted"
 
         except Exception as e:
-            return False, f"Error restarting server: {e}"
+            msg = f"Error restarting server: {e}"
+            logger.error(msg)
+            return False, msg
 
 
 def quick_connect(address: str) -> tuple[bool, str]:
