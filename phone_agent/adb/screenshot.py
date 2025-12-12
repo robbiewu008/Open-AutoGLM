@@ -10,6 +10,7 @@ from typing import Tuple
 from PIL import Image
 
 from phone_agent.adb.device import get_screen_dimensions # Import the new function
+from phone_agent.log import logger
 
 
 @dataclass
@@ -75,7 +76,7 @@ def get_screenshot(device_id: str | None = None, display_id: int = 0, timeout: i
         )
         
         if pull_result.returncode != 0 or not os.path.exists(temp_path):
-            print(f"Error pulling screenshot or file not found: {pull_result.stderr}")
+            logger.error(f"Error pulling screenshot or file not found: {pull_result.stderr}")
             return _create_fallback_screenshot(is_sensitive=False, device_id=device_id)
 
         # Read and encode image
@@ -94,7 +95,7 @@ def get_screenshot(device_id: str | None = None, display_id: int = 0, timeout: i
         )
 
     except Exception as e:
-        print(f"Screenshot error: {e}")
+        logger.error(f"Screenshot error: {e}")
         return _create_fallback_screenshot(is_sensitive=False, device_id=device_id)
 
 

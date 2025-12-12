@@ -363,9 +363,16 @@ Examples:
     parser.add_argument(
         "--lang",
         type=str,
-        choices=["cn", "en"],
+        choices=["cn", "en", "automotive_cn"],
         default=os.getenv("PHONE_AGENT_LANG", "cn"),
-        help="Language for system prompt (cn or en, default: cn)",
+        help="Language for system prompt (cn, en, or automotive_cn, default: cn)",
+    )
+
+    parser.add_argument(
+        "--display-id",
+        type=int,
+        default=int(os.getenv("PHONE_AGENT_DISPLAY_ID", "0")),
+        help="Target display ID for multi-screen setups (default: 0)",
     )
 
     parser.add_argument(
@@ -483,6 +490,7 @@ def main():
         device_id=args.device_id,
         verbose=not args.quiet,
         lang=args.lang,
+        display_id=args.display_id,
     )
 
     # Create agent
@@ -499,6 +507,7 @@ def main():
     print(f"Base URL: {model_config.base_url}")
     print(f"Max Steps: {agent_config.max_steps}")
     print(f"Language: {agent_config.lang}")
+    print(f"Display ID: {agent_config.display_id}")
 
     # Show device info
     devices = list_devices()

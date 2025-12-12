@@ -42,10 +42,12 @@ class ActionHandler:
     def __init__(
         self,
         device_id: str | None = None,
+        display_id: int = 0,
         confirmation_callback: Callable[[str], bool] | None = None,
         takeover_callback: Callable[[str], None] | None = None,
     ):
         self.device_id = device_id
+        self.display_id = display_id
         self.confirmation_callback = confirmation_callback or self._default_confirmation
         self.takeover_callback = takeover_callback or self._default_takeover
 
@@ -150,7 +152,7 @@ class ActionHandler:
                     message="User cancelled sensitive operation",
                 )
 
-        tap(x, y, self.device_id)
+        tap(x, y, self.device_id, display_id=self.display_id)
         return ActionResult(True, False)
 
     def _handle_type(self, action: dict, width: int, height: int) -> ActionResult:
@@ -185,7 +187,7 @@ class ActionHandler:
         start_x, start_y = self._convert_relative_to_absolute(start, width, height)
         end_x, end_y = self._convert_relative_to_absolute(end, width, height)
 
-        swipe(start_x, start_y, end_x, end_y, device_id=self.device_id)
+        swipe(start_x, start_y, end_x, end_y, device_id=self.device_id, display_id=self.display_id)
         return ActionResult(True, False)
 
     def _handle_back(self, action: dict, width: int, height: int) -> ActionResult:
@@ -205,7 +207,7 @@ class ActionHandler:
             return ActionResult(False, False, "No element coordinates")
 
         x, y = self._convert_relative_to_absolute(element, width, height)
-        double_tap(x, y, self.device_id)
+        double_tap(x, y, self.device_id, display_id=self.display_id)
         return ActionResult(True, False)
 
     def _handle_long_press(self, action: dict, width: int, height: int) -> ActionResult:
@@ -215,7 +217,7 @@ class ActionHandler:
             return ActionResult(False, False, "No element coordinates")
 
         x, y = self._convert_relative_to_absolute(element, width, height)
-        long_press(x, y, device_id=self.device_id)
+        long_press(x, y, device_id=self.device_id, display_id=self.display_id)
         return ActionResult(True, False)
 
     def _handle_wait(self, action: dict, width: int, height: int) -> ActionResult:

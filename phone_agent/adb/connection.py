@@ -74,35 +74,57 @@ class ADBConnection:
 
         logger.info(f"Attempting to connect to {address}...")
 
-        try:
-            result = subprocess.run(
-                [self.adb_path, "connect", address],
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
+        retries = 3
+        delay = 1.0
+        backoff = 2.0
 
-            output = result.stdout + result.stderr
+        for attempt in range(1, retries + 1):
+            try:
+                result = subprocess.run(
+                    [self.adb_path, "connect", address],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout,
+                )
 
-            if "connected" in output.lower():
-                logger.info(f"Successfully connected to {address}")
-                return True, f"Connected to {address}"
-            elif "already connected" in output.lower():
-                logger.info(f"Already connected to {address}")
-                return True, f"Already connected to {address}"
-            else:
-                msg = output.strip()
-                logger.warning(f"Failed to connect to {address}: {msg}")
-                return False, msg
+                output = result.stdout + result.stderr
 
-        except subprocess.TimeoutExpired:
-            msg = f"Connection timeout after {timeout}s"
-            logger.error(msg)
-            return False, msg
-        except Exception as e:
-            msg = f"Connection error: {e}"
-            logger.error(msg)
-            return False, msg
+                if "connected" in output.lower() and "unable" not in output.lower() and "failed" not in output.lower():
+                    logger.info(f"Successfully connected to {address}")
+                    return True, f"Connected to {address}"
+                elif "already connected" in output.lower():
+                    logger.info(f"Already connected to {address}")
+                    return True, f"Already connected to {address}"
+                else:
+                    msg = output.strip()
+                    if attempt < retries:
+                        logger.warning(f"Connection attempt {attempt}/{retries} failed: {msg}. Retrying in {delay}s...")
+                        time.sleep(delay)
+                        delay *= backoff
+                    else:
+                        logger.warning(f"Failed to connect to {address} after {retries} attempts: {msg}")
+                        return False, msg
+
+            except subprocess.TimeoutExpired:
+                msg = f"Connection timeout after {timeout}s"
+                if attempt < retries:
+                    logger.warning(f"Connection attempt {attempt}/{retries} timed out. Retrying in {delay}s...")
+                    time.sleep(delay)
+                    delay *= backoff
+                else:
+                    logger.error(msg)
+                    return False, msg
+            except Exception as e:
+                msg = f"Connection error: {e}"
+                if attempt < retries:
+                    logger.warning(f"Connection attempt {attempt}/{retries} error: {e}. Retrying in {delay}s...")
+                    time.sleep(delay)
+                    delay *= backoff
+                else:
+                    logger.error(msg)
+                    return False, msg
+        
+        return False, "Connection failed after retries"
 
     def disconnect(self, address: str | None = None) -> tuple[bool, str]:
         """

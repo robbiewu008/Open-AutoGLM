@@ -11,6 +11,7 @@ from phone_agent.adb import get_current_app, get_screenshot
 from phone_agent.config import get_messages, get_system_prompt
 from phone_agent.model import ModelClient, ModelConfig
 from phone_agent.model.client import MessageBuilder
+from phone_agent.log import logger
 
 
 @dataclass
@@ -75,6 +76,7 @@ class PhoneAgent:
         self.model_client = ModelClient(self.model_config)
         self.action_handler = ActionHandler(
             device_id=self.agent_config.device_id,
+            display_id=self.agent_config.display_id,
             confirmation_callback=confirmation_callback,
             takeover_callback=takeover_callback,
         )
@@ -176,7 +178,7 @@ class PhoneAgent:
             response = self.model_client.request(self._context)
         except Exception as e:
             if self.agent_config.verbose:
-                traceback.print_exc()
+                logger.error(traceback.format_exc())
             return StepResult(
                 success=False,
                 finished=True,
@@ -190,20 +192,14 @@ class PhoneAgent:
             action = parse_action(response.action)
         except ValueError:
             if self.agent_config.verbose:
-                traceback.print_exc()
+                logger.error(traceback.format_exc())
             action = finish(message=response.action)
 
         if self.agent_config.verbose:
             # Print thinking process
             msgs = get_messages(self.agent_config.lang)
-            print("\n" + "=" * 50)
-            print(f"💭 {msgs['thinking']}:")
-            print("-" * 50)
-            print(response.thinking)
-            print("-" * 50)
-            print(f"🎯 {msgs['action']}:")
-            print(json.dumps(action, ensure_ascii=False, indent=2))
-            print("=" * 50 + "\n")
+            logger.info(f"💭 {msgs['thinking']}:\n{response.thinking}")
+            logger.info(f"🎯 {msgs['action']}:\n{json.dumps(action, ensure_ascii=False, indent=2)}")
 
         # Remove image from context to save space
         self._context[-1] = MessageBuilder.remove_images_from_message(self._context[-1])
@@ -215,7 +211,7 @@ class PhoneAgent:
             )
         except Exception as e:
             if self.agent_config.verbose:
-                traceback.print_exc()
+                logger.error(traceback.format_exc())
             result = self.action_handler.execute(
                 finish(message=str(e)), screenshot.width, screenshot.height
             )
@@ -232,11 +228,9 @@ class PhoneAgent:
 
         if finished and self.agent_config.verbose:
             msgs = get_messages(self.agent_config.lang)
-            print("\n" + "🎉 " + "=" * 48)
-            print(
+            logger.info(
                 f"✅ {msgs['task_completed']}: {result.message or action.get('message', msgs['done'])}"
             )
-            print("=" * 50 + "\n")
 
         return StepResult(
             success=result.success,

@@ -3,12 +3,15 @@
 import os
 import subprocess
 import time
+from functools import lru_cache
 from typing import List, Optional, Tuple
 
 from phone_agent.config.apps import APP_PACKAGES
 from phone_agent.log import logger
+from phone_agent.utils import retry
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def get_current_app(device_id: str | None = None) -> str:
     """
     Get the currently focused app name.
@@ -21,37 +24,28 @@ def get_current_app(device_id: str | None = None) -> str:
     """
     adb_prefix = _get_adb_prefix(device_id)
 
-    try:
-        result = subprocess.run(
-            adb_prefix + ["shell", "dumpsys", "window"], 
-            capture_output=True, 
-            text=True,
-            timeout=5
-        )
-        if result.returncode != 0:
-            logger.warning(f"Failed to get current app: {result.stderr}")
-            return "System Home"
-            
-        output = result.stdout
-
-        # Parse window focus info
-        for line in output.split("\n"):
-            if "mCurrentFocus" in line or "mFocusedApp" in line:
-                for app_name, package in APP_PACKAGES.items():
-                    if package in line:
-                        return app_name
-
-        return "System Home"
+    result = subprocess.run(
+        adb_prefix + ["shell", "dumpsys", "window"], 
+        capture_output=True, 
+        text=True,
+        timeout=5,
+        check=True
+    )
         
-    except subprocess.TimeoutExpired:
-        logger.error("Timeout getting current app")
-        return "System Home"
-    except Exception as e:
-        logger.error(f"Error getting current app: {e}")
-        return "System Home"
+    output = result.stdout
+
+    # Parse window focus info
+    for line in output.split("\n"):
+        if "mCurrentFocus" in line or "mFocusedApp" in line:
+            for app_name, package in APP_PACKAGES.items():
+                if package in line:
+                    return app_name
+
+    return "System Home"
 
 
-def tap(x: int, y: int, device_id: str | None = None, delay: float = 1.0) -> None:
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
+def tap(x: int, y: int, device_id: str | None = None, display_id: int = 0, delay: float = 1.0) -> None:
     """
     Tap at the specified coordinates.
 
@@ -59,30 +53,25 @@ def tap(x: int, y: int, device_id: str | None = None, delay: float = 1.0) -> Non
         x: X coordinate.
         y: Y coordinate.
         device_id: Optional ADB device ID.
+        display_id: Display ID to tap on (default: 0).
         delay: Delay in seconds after tap.
     """
     adb_prefix = _get_adb_prefix(device_id)
     
-    logger.info(f"Tapping at ({x}, {y}) on device {device_id or 'default'}")
+    logger.info(f"Tapping at ({x}, {y}) on device {device_id or 'default'} (display {display_id})")
 
-    try:
-        subprocess.run(
-            adb_prefix + ["shell", "input", "tap", str(x), str(y)], 
-            capture_output=True,
-            timeout=5,
-            check=True
-        )
-        time.sleep(delay)
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout tapping at ({x}, {y})")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to tap at ({x}, {y}): {e.stderr}")
-    except Exception as e:
-        logger.error(f"Error tapping: {e}")
+    subprocess.run(
+        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)], 
+        capture_output=True,
+        timeout=5,
+        check=True
+    )
+    time.sleep(delay)
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def double_tap(
-    x: int, y: int, device_id: str | None = None, delay: float = 1.0
+    x: int, y: int, device_id: str | None = None, display_id: int = 0, delay: float = 1.0
 ) -> None:
     """
     Double tap at the specified coordinates.
@@ -91,40 +80,36 @@ def double_tap(
         x: X coordinate.
         y: Y coordinate.
         device_id: Optional ADB device ID.
+        display_id: Display ID to tap on (default: 0).
         delay: Delay in seconds after double tap.
     """
     adb_prefix = _get_adb_prefix(device_id)
 
-    logger.info(f"Double tapping at ({x}, {y}) on device {device_id or 'default'}")
+    logger.info(f"Double tapping at ({x}, {y}) on device {device_id or 'default'} (display {display_id})")
 
-    try:
-        subprocess.run(
-            adb_prefix + ["shell", "input", "tap", str(x), str(y)], 
-            capture_output=True,
-            timeout=5,
-            check=True
-        )
-        time.sleep(0.1)
-        subprocess.run(
-            adb_prefix + ["shell", "input", "tap", str(x), str(y)], 
-            capture_output=True,
-            timeout=5,
-            check=True
-        )
-        time.sleep(delay)
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout double tapping at ({x}, {y})")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to double tap at ({x}, {y}): {e.stderr}")
-    except Exception as e:
-        logger.error(f"Error double tapping: {e}")
+    subprocess.run(
+        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)], 
+        capture_output=True,
+        timeout=5,
+        check=True
+    )
+    time.sleep(0.1)
+    subprocess.run(
+        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)], 
+        capture_output=True,
+        timeout=5,
+        check=True
+    )
+    time.sleep(delay)
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def long_press(
     x: int,
     y: int,
     duration_ms: int = 3000,
     device_id: str | None = None,
+    display_id: int = 0,
     delay: float = 1.0,
 ) -> None:
     """
@@ -135,29 +120,24 @@ def long_press(
         y: Y coordinate.
         duration_ms: Duration of press in milliseconds.
         device_id: Optional ADB device ID.
+        display_id: Display ID to tap on (default: 0).
         delay: Delay in seconds after long press.
     """
     adb_prefix = _get_adb_prefix(device_id)
 
-    logger.info(f"Long pressing at ({x}, {y}) for {duration_ms}ms")
+    logger.info(f"Long pressing at ({x}, {y}) for {duration_ms}ms (display {display_id})")
 
-    try:
-        subprocess.run(
-            adb_prefix
-            + ["shell", "input", "swipe", str(x), str(y), str(x), str(y), str(duration_ms)],
-            capture_output=True,
-            timeout=5 + duration_ms/1000,
-            check=True
-        )
-        time.sleep(delay)
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout long pressing at ({x}, {y})")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to long press at ({x}, {y}): {e.stderr}")
-    except Exception as e:
-        logger.error(f"Error long pressing: {e}")
+    subprocess.run(
+        adb_prefix
+        + ["shell", "input", "-d", str(display_id), "swipe", str(x), str(y), str(x), str(y), str(duration_ms)],
+        capture_output=True,
+        timeout=5 + duration_ms/1000,
+        check=True
+    )
+    time.sleep(delay)
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def swipe(
     start_x: int,
     start_y: int,
@@ -165,6 +145,7 @@ def swipe(
     end_y: int,
     duration_ms: int | None = None,
     device_id: str | None = None,
+    display_id: int = 0,
     delay: float = 1.0,
 ) -> None:
     """
@@ -177,6 +158,7 @@ def swipe(
         end_y: Ending Y coordinate.
         duration_ms: Duration of swipe in milliseconds (auto-calculated if None).
         device_id: Optional ADB device ID.
+        display_id: Display ID to tap on (default: 0).
         delay: Delay in seconds after swipe.
     """
     adb_prefix = _get_adb_prefix(device_id)
@@ -187,34 +169,29 @@ def swipe(
         duration_ms = int(dist_sq / 1000)
         duration_ms = max(1000, min(duration_ms, 2000))  # Clamp between 1000-2000ms
 
-    logger.info(f"Swiping from ({start_x}, {start_y}) to ({end_x}, {end_y}) in {duration_ms}ms")
+    logger.info(f"Swiping from ({start_x}, {start_y}) to ({end_x}, {end_y}) in {duration_ms}ms (display {display_id})")
 
-    try:
-        subprocess.run(
-            adb_prefix
-            + [
-                "shell",
-                "input",
-                "swipe",
-                str(start_x),
-                str(start_y),
-                str(end_x),
-                str(end_y),
-                str(duration_ms),
-            ],
-            capture_output=True,
-            timeout=5 + duration_ms/1000,
-            check=True
-        )
-        time.sleep(delay)
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout swiping")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to swipe: {e.stderr}")
-    except Exception as e:
-        logger.error(f"Error swiping: {e}")
+    subprocess.run(
+        adb_prefix
+        + [
+            "shell",
+            "input",
+            "-d", str(display_id),
+            "swipe",
+            str(start_x),
+            str(start_y),
+            str(end_x),
+            str(end_y),
+            str(duration_ms),
+        ],
+        capture_output=True,
+        timeout=5 + duration_ms/1000,
+        check=True
+    )
+    time.sleep(delay)
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def back(device_id: str | None = None, delay: float = 1.0) -> None:
     """
     Press the back button.
@@ -227,22 +204,16 @@ def back(device_id: str | None = None, delay: float = 1.0) -> None:
     
     logger.info("Pressing Back button")
 
-    try:
-        subprocess.run(
-            adb_prefix + ["shell", "input", "keyevent", "4"], 
-            capture_output=True,
-            timeout=5,
-            check=True
-        )
-        time.sleep(delay)
-    except subprocess.TimeoutExpired:
-        logger.error("Timeout pressing Back")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to press Back: {e.stderr}")
-    except Exception as e:
-        logger.error(f"Error pressing Back: {e}")
+    subprocess.run(
+        adb_prefix + ["shell", "input", "keyevent", "4"], 
+        capture_output=True,
+        timeout=5,
+        check=True
+    )
+    time.sleep(delay)
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def home(device_id: str | None = None, delay: float = 1.0) -> None:
     """
     Press the home button.
@@ -255,22 +226,16 @@ def home(device_id: str | None = None, delay: float = 1.0) -> None:
 
     logger.info("Pressing Home button")
 
-    try:
-        subprocess.run(
-            adb_prefix + ["shell", "input", "keyevent", "KEYCODE_HOME"], 
-            capture_output=True,
-            timeout=5,
-            check=True
-        )
-        time.sleep(delay)
-    except subprocess.TimeoutExpired:
-        logger.error("Timeout pressing Home")
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to press Home: {e.stderr}")
-    except Exception as e:
-        logger.error(f"Error pressing Home: {e}")
+    subprocess.run(
+        adb_prefix + ["shell", "input", "keyevent", "KEYCODE_HOME"], 
+        capture_output=True,
+        timeout=5,
+        check=True
+    )
+    time.sleep(delay)
 
 
+@retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def launch_app(app_name: str, device_id: str | None = None, delay: float = 1.0) -> bool:
     """
     Launch an app by name.
@@ -292,33 +257,23 @@ def launch_app(app_name: str, device_id: str | None = None, delay: float = 1.0) 
     
     logger.info(f"Launching app: {app_name} ({package})")
 
-    try:
-        subprocess.run(
-            adb_prefix
-            + [
-                "shell",
-                "monkey",
-                "-p",
-                package,
-                "-c",
-                "android.intent.category.LAUNCHER",
-                "1",
-            ],
-            capture_output=True,
-            timeout=10,
-            check=True
-        )
-        time.sleep(delay)
-        return True
-    except subprocess.TimeoutExpired:
-        logger.error(f"Timeout launching app {app_name}")
-        return False
-    except subprocess.CalledProcessError as e:
-        logger.error(f"Failed to launch app {app_name}: {e.stderr}")
-        return False
-    except Exception as e:
-        logger.error(f"Error launching app {app_name}: {e}")
-        return False
+    subprocess.run(
+        adb_prefix
+        + [
+            "shell",
+            "monkey",
+            "-p",
+            package,
+            "-c",
+            "android.intent.category.LAUNCHER",
+            "1",
+        ],
+        capture_output=True,
+        timeout=10,
+        check=True
+    )
+    time.sleep(delay)
+    return True
 
 
 def _get_adb_prefix(device_id: str | None) -> list:
@@ -328,6 +283,7 @@ def _get_adb_prefix(device_id: str | None) -> list:
     return ["adb"]
 
 
+@lru_cache(maxsize=1)
 def get_screen_dimensions(device_id: str | None = None) -> Tuple[int, int] | None:
     """
     Get the screen dimensions (width, height) of the device.
