@@ -1,5 +1,6 @@
 """ADB connection management for local and remote devices."""
 
+import os
 import subprocess
 import time
 from dataclasses import dataclass
@@ -67,6 +68,11 @@ class ADBConnection:
         Note:
             The remote device must have TCP/IP debugging enabled.
             On the device, run: adb tcpip 5555
+
+            Retry behavior can be configured via environment variables:
+            - PHONE_AGENT_RETRY_COUNT: Number of retries (default: 3)
+            - PHONE_AGENT_RETRY_DELAY: Initial delay in seconds (default: 1.0)
+            - PHONE_AGENT_RETRY_BACKOFF: Backoff multiplier (default: 2.0)
         """
         # Validate address format
         if ":" not in address:
@@ -74,9 +80,10 @@ class ADBConnection:
 
         logger.info(f"Attempting to connect to {address}...")
 
-        retries = 3
-        delay = 1.0
-        backoff = 2.0
+        # Read retry config from environment variables
+        retries = int(os.getenv("PHONE_AGENT_RETRY_COUNT", "3"))
+        delay = float(os.getenv("PHONE_AGENT_RETRY_DELAY", "1.0"))
+        backoff = float(os.getenv("PHONE_AGENT_RETRY_BACKOFF", "2.0"))
 
         for attempt in range(1, retries + 1):
             try:

@@ -11,6 +11,12 @@ Environment Variables:
     PHONE_AGENT_API_KEY: API key for model authentication (default: EMPTY)
     PHONE_AGENT_MAX_STEPS: Maximum steps per task (default: 100)
     PHONE_AGENT_DEVICE_ID: ADB device ID for multi-device setups
+    PHONE_AGENT_DISPLAY_ID: Display ID for multi-screen setups (default: 0)
+    PHONE_AGENT_RETRY_COUNT: Number of retries for ADB operations (default: 3)
+    PHONE_AGENT_RETRY_DELAY: Initial retry delay in seconds (default: 1.0)
+    PHONE_AGENT_RETRY_BACKOFF: Retry backoff multiplier (default: 2.0)
+    PHONE_AGENT_LOG_FILE: Path to log file for persistent logging (optional)
+    PHONE_AGENT_LOG_LEVEL: Logging level - DEBUG/INFO/WARNING/ERROR (default: INFO)
 """
 
 import argparse

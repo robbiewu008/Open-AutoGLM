@@ -283,10 +283,13 @@ def _get_adb_prefix(device_id: str | None) -> list:
     return ["adb"]
 
 
-@lru_cache(maxsize=1)
+@lru_cache(maxsize=8)
 def get_screen_dimensions(device_id: str | None = None) -> Tuple[int, int] | None:
     """
     Get the screen dimensions (width, height) of the device.
+
+    Caches dimensions for up to 8 devices to support multi-device setups
+    (e.g., multiple emulators or physical devices in automotive testing).
 
     Args:
         device_id: Optional ADB device ID.
