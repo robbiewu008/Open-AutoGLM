@@ -1,7 +1,9 @@
+"""Action handler for processing AI model outputs."""
+
+import ast
 import time
 from dataclasses import dataclass
 from typing import Any, Callable
-import ast # Added import for ast
 
 from phone_agent.adb import (
     back,
@@ -279,14 +281,13 @@ def parse_action(response: str) -> dict[str, Any]:
     Raises:
         ValueError: If the response cannot be parsed or contains unsafe code.
     """
-    response = response.strip()
     try:
         # Parse the string as a Python expression
         tree = ast.parse(response, mode='eval')
-        
+
         if not isinstance(tree.body, ast.Call):
              raise ValueError("Response is not a function call")
-             
+
         func_name = ""
         if isinstance(tree.body.func, ast.Name):
             func_name = tree.body.func.id
@@ -297,16 +298,10 @@ def parse_action(response: str) -> dict[str, Any]:
             raise ValueError(f"Unknown action function: {func_name}")
 
         action_dict = {"_metadata": func_name}
-        
-        # Extract keyword arguments
+
+        # Extract keyword arguments safely
         for keyword in tree.body.keywords:
-            # We use ast.literal_eval on the value's source representation
-            # or simply rely on AST node types if we want to be stricter.
-            # To serve the original intent, we can just evaluate literals.
-            
-            # However, ast nodes like Call (e.g. __import__) won't be valid literals.
-            # safe_eval_node helper can ensure we only process literals.
-            
+            # Use _safe_eval_node to ensure we only process literals
             value = _safe_eval_node(keyword.value)
             action_dict[keyword.arg] = value
 

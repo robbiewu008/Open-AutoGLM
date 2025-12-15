@@ -196,10 +196,16 @@ class PhoneAgent:
             action = finish(message=response.action)
 
         if self.agent_config.verbose:
-            # Print thinking process
+            # Print thinking process and action
             msgs = get_messages(self.agent_config.lang)
-            logger.info(f"💭 {msgs['thinking']}:\n{response.thinking}")
-            logger.info(f"🎯 {msgs['action']}:\n{json.dumps(action, ensure_ascii=False, indent=2)}")
+            print("\n" + "=" * 50)
+            print(f"💭 {msgs['thinking']}:")
+            print("-" * 50)
+            print(response.thinking)
+            print("-" * 50)
+            print(f"🎯 {msgs['action']}:")
+            print(json.dumps(action, ensure_ascii=False, indent=2))
+            print("=" * 50 + "\n")
 
         # Remove image from context to save space
         self._context[-1] = MessageBuilder.remove_images_from_message(self._context[-1])
