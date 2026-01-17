@@ -7,6 +7,7 @@ from functools import lru_cache
 from typing import List, Optional, Tuple
 
 from phone_agent.config.apps import APP_PACKAGES
+from phone_agent.config.timing import TIMING_CONFIG
 from phone_agent.log import logger
 from phone_agent.utils import retry
 
@@ -25,14 +26,17 @@ def get_current_app(device_id: str | None = None) -> str:
     adb_prefix = _get_adb_prefix(device_id)
 
     result = subprocess.run(
-        adb_prefix + ["shell", "dumpsys", "window"], 
-        capture_output=True, 
+        adb_prefix + ["shell", "dumpsys", "window"],
+        capture_output=True,
         text=True,
+        encoding="utf-8",
         timeout=5,
         check=True
     )
         
     output = result.stdout
+    if not output:
+        raise ValueError("No output from dumpsys window")
 
     # Parse window focus info
     for line in output.split("\n"):
@@ -45,7 +49,7 @@ def get_current_app(device_id: str | None = None) -> str:
 
 
 @retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
-def tap(x: int, y: int, device_id: str | None = None, display_id: int = 0, delay: float = 1.0) -> None:
+def tap(x: int, y: int, device_id: str | None = None, display_id: int = 0, delay: float | None = None) -> None:
     """
     Tap at the specified coordinates.
 
@@ -54,15 +58,19 @@ def tap(x: int, y: int, device_id: str | None = None, display_id: int = 0, delay
         y: Y coordinate.
         device_id: Optional ADB device ID.
         display_id: Display ID to tap on (default: 0).
-        delay: Delay in seconds after tap.
+        delay: Delay in seconds after tap. If None, uses configured default.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_tap_delay
+
     adb_prefix = _get_adb_prefix(device_id)
-    
+
     logger.info(f"Tapping at ({x}, {y}) on device {device_id or 'default'} (display {display_id})")
 
     subprocess.run(
-        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)], 
+        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)],
         capture_output=True,
+        encoding="utf-8",
         timeout=5,
         check=True
     )
@@ -71,7 +79,7 @@ def tap(x: int, y: int, device_id: str | None = None, display_id: int = 0, delay
 
 @retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
 def double_tap(
-    x: int, y: int, device_id: str | None = None, display_id: int = 0, delay: float = 1.0
+    x: int, y: int, device_id: str | None = None, display_id: int = 0, delay: float | None = None
 ) -> None:
     """
     Double tap at the specified coordinates.
@@ -81,22 +89,27 @@ def double_tap(
         y: Y coordinate.
         device_id: Optional ADB device ID.
         display_id: Display ID to tap on (default: 0).
-        delay: Delay in seconds after double tap.
+        delay: Delay in seconds after double tap. If None, uses configured default.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_double_tap_delay
+
     adb_prefix = _get_adb_prefix(device_id)
 
     logger.info(f"Double tapping at ({x}, {y}) on device {device_id or 'default'} (display {display_id})")
 
     subprocess.run(
-        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)], 
+        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)],
         capture_output=True,
+        encoding="utf-8",
         timeout=5,
         check=True
     )
-    time.sleep(0.1)
+    time.sleep(TIMING_CONFIG.device.double_tap_interval)
     subprocess.run(
-        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)], 
+        adb_prefix + ["shell", "input", "-d", str(display_id), "tap", str(x), str(y)],
         capture_output=True,
+        encoding="utf-8",
         timeout=5,
         check=True
     )
@@ -110,7 +123,7 @@ def long_press(
     duration_ms: int = 3000,
     device_id: str | None = None,
     display_id: int = 0,
-    delay: float = 1.0,
+    delay: float | None = None,
 ) -> None:
     """
     Long press at the specified coordinates.
@@ -121,8 +134,11 @@ def long_press(
         duration_ms: Duration of press in milliseconds.
         device_id: Optional ADB device ID.
         display_id: Display ID to tap on (default: 0).
-        delay: Delay in seconds after long press.
+        delay: Delay in seconds after long press. If None, uses configured default.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_long_press_delay
+
     adb_prefix = _get_adb_prefix(device_id)
 
     logger.info(f"Long pressing at ({x}, {y}) for {duration_ms}ms (display {display_id})")
@@ -131,6 +147,7 @@ def long_press(
         adb_prefix
         + ["shell", "input", "-d", str(display_id), "swipe", str(x), str(y), str(x), str(y), str(duration_ms)],
         capture_output=True,
+        encoding="utf-8",
         timeout=5 + duration_ms/1000,
         check=True
     )
@@ -146,7 +163,7 @@ def swipe(
     duration_ms: int | None = None,
     device_id: str | None = None,
     display_id: int = 0,
-    delay: float = 1.0,
+    delay: float | None = None,
 ) -> None:
     """
     Swipe from start to end coordinates.
@@ -159,8 +176,11 @@ def swipe(
         duration_ms: Duration of swipe in milliseconds (auto-calculated if None).
         device_id: Optional ADB device ID.
         display_id: Display ID to tap on (default: 0).
-        delay: Delay in seconds after swipe.
+        delay: Delay in seconds after swipe. If None, uses configured default.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_swipe_delay
+
     adb_prefix = _get_adb_prefix(device_id)
 
     if duration_ms is None:
@@ -185,6 +205,7 @@ def swipe(
             str(duration_ms),
         ],
         capture_output=True,
+        encoding="utf-8",
         timeout=5 + duration_ms/1000,
         check=True
     )
@@ -192,21 +213,25 @@ def swipe(
 
 
 @retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
-def back(device_id: str | None = None, delay: float = 1.0) -> None:
+def back(device_id: str | None = None, delay: float | None = None) -> None:
     """
     Press the back button.
 
     Args:
         device_id: Optional ADB device ID.
-        delay: Delay in seconds after pressing back.
+        delay: Delay in seconds after pressing back. If None, uses configured default.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_back_delay
+
     adb_prefix = _get_adb_prefix(device_id)
-    
+
     logger.info("Pressing Back button")
 
     subprocess.run(
-        adb_prefix + ["shell", "input", "keyevent", "4"], 
+        adb_prefix + ["shell", "input", "keyevent", "4"],
         capture_output=True,
+        encoding="utf-8",
         timeout=5,
         check=True
     )
@@ -214,21 +239,25 @@ def back(device_id: str | None = None, delay: float = 1.0) -> None:
 
 
 @retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
-def home(device_id: str | None = None, delay: float = 1.0) -> None:
+def home(device_id: str | None = None, delay: float | None = None) -> None:
     """
     Press the home button.
 
     Args:
         device_id: Optional ADB device ID.
-        delay: Delay in seconds after pressing home.
+        delay: Delay in seconds after pressing home. If None, uses configured default.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_home_delay
+
     adb_prefix = _get_adb_prefix(device_id)
 
     logger.info("Pressing Home button")
 
     subprocess.run(
-        adb_prefix + ["shell", "input", "keyevent", "KEYCODE_HOME"], 
+        adb_prefix + ["shell", "input", "keyevent", "KEYCODE_HOME"],
         capture_output=True,
+        encoding="utf-8",
         timeout=5,
         check=True
     )
@@ -236,25 +265,28 @@ def home(device_id: str | None = None, delay: float = 1.0) -> None:
 
 
 @retry(exceptions=(subprocess.CalledProcessError, subprocess.TimeoutExpired))
-def launch_app(app_name: str, device_id: str | None = None, delay: float = 1.0) -> bool:
+def launch_app(app_name: str, device_id: str | None = None, delay: float | None = None) -> bool:
     """
     Launch an app by name.
 
     Args:
         app_name: The app name (must be in APP_PACKAGES).
         device_id: Optional ADB device ID.
-        delay: Delay in seconds after launching.
+        delay: Delay in seconds after launching. If None, uses configured default.
 
     Returns:
         True if app was launched, False if app not found.
     """
+    if delay is None:
+        delay = TIMING_CONFIG.device.default_launch_delay
+
     if app_name not in APP_PACKAGES:
         logger.warning(f"App not found in configuration: {app_name}")
         return False
 
     adb_prefix = _get_adb_prefix(device_id)
     package = APP_PACKAGES[app_name]
-    
+
     logger.info(f"Launching app: {app_name} ({package})")
 
     subprocess.run(
@@ -269,6 +301,7 @@ def launch_app(app_name: str, device_id: str | None = None, delay: float = 1.0) 
             "1",
         ],
         capture_output=True,
+        encoding="utf-8",
         timeout=10,
         check=True
     )

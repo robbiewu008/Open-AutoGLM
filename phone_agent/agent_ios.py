@@ -1,29 +1,29 @@
-"""Main PhoneAgent class for orchestrating phone automation."""
+"""iOS PhoneAgent class for orchestrating iOS phone automation."""
 
 import json
 import traceback
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from phone_agent.actions import ActionHandler
 from phone_agent.actions.handler import do, finish, parse_action
+from phone_agent.actions.handler_ios import IOSActionHandler
 from phone_agent.config import get_messages, get_system_prompt
-from phone_agent.device_factory import get_device_factory
 from phone_agent.model import ModelClient, ModelConfig
 from phone_agent.model.client import MessageBuilder
-from phone_agent.log import logger
+from phone_agent.xctest import XCTestConnection, get_current_app, get_screenshot
 
 
 @dataclass
-class AgentConfig:
-    """Configuration for the PhoneAgent."""
+class IOSAgentConfig:
+    """Configuration for the iOS PhoneAgent."""
 
     max_steps: int = 100
-    device_id: str | None = None
+    wda_url: str = "http://localhost:8100"
+    session_id: str | None = None
+    device_id: str | None = None  # iOS device UDID
     lang: str = "cn"
     system_prompt: str | None = None
     verbose: bool = True
-    display_id: int = 0 # New: Added display_id for multi-screen support
 
     def __post_init__(self):
         if self.system_prompt is None:
@@ -41,42 +41,57 @@ class StepResult:
     message: str | None = None
 
 
-class PhoneAgent:
+class IOSPhoneAgent:
     """
-    AI-powered agent for automating Android phone interactions.
+    AI-powered agent for automating iOS phone interactions.
 
     The agent uses a vision-language model to understand screen content
-    and decide on actions to complete user tasks.
+    and decide on actions to complete user tasks via WebDriverAgent.
 
     Args:
         model_config: Configuration for the AI model.
-        agent_config: Configuration for the agent behavior.
+        agent_config: Configuration for the iOS agent behavior.
         confirmation_callback: Optional callback for sensitive action confirmation.
         takeover_callback: Optional callback for takeover requests.
 
     Example:
-        >>> from phone_agent import PhoneAgent
+        >>> from phone_agent.agent_ios import IOSPhoneAgent, IOSAgentConfig
         >>> from phone_agent.model import ModelConfig
         >>>
         >>> model_config = ModelConfig(base_url="http://localhost:8000/v1")
-        >>> agent = PhoneAgent(model_config)
-        >>> agent.run("Open WeChat and send a message to John")
+        >>> agent_config = IOSAgentConfig(wda_url="http://localhost:8100")
+        >>> agent = IOSPhoneAgent(model_config, agent_config)
+        >>> agent.run("Open Safari and search for Apple")
     """
 
     def __init__(
         self,
         model_config: ModelConfig | None = None,
-        agent_config: AgentConfig | None = None,
+        agent_config: IOSAgentConfig | None = None,
         confirmation_callback: Callable[[str], bool] | None = None,
         takeover_callback: Callable[[str], None] | None = None,
     ):
         self.model_config = model_config or ModelConfig()
-        self.agent_config = agent_config or AgentConfig()
+        self.agent_config = agent_config or IOSAgentConfig()
 
         self.model_client = ModelClient(self.model_config)
-        self.action_handler = ActionHandler(
-            device_id=self.agent_config.device_id,
-            display_id=self.agent_config.display_id,
+
+        # Initialize WDA connection and create session if needed
+        self.wda_connection = XCTestConnection(wda_url=self.agent_config.wda_url)
+
+        # Auto-create session if not provided
+        if self.agent_config.session_id is None:
+            success, session_id = self.wda_connection.start_wda_session()
+            if success and session_id != "session_started":
+                self.agent_config.session_id = session_id
+                if self.agent_config.verbose:
+                    print(f"✅ Created WDA session: {session_id}")
+            elif self.agent_config.verbose:
+                print(f"⚠️  Using default WDA session (no explicit session ID)")
+
+        self.action_handler = IOSActionHandler(
+            wda_url=self.agent_config.wda_url,
+            session_id=self.agent_config.session_id,
             confirmation_callback=confirmation_callback,
             takeover_callback=takeover_callback,
         )
@@ -143,12 +158,14 @@ class PhoneAgent:
         self._step_count += 1
 
         # Capture current screen state
-        device_factory = get_device_factory()
-        screenshot = device_factory.get_screenshot(
+        screenshot = get_screenshot(
+            wda_url=self.agent_config.wda_url,
+            session_id=self.agent_config.session_id,
             device_id=self.agent_config.device_id,
-            display_id=self.agent_config.display_id
         )
-        current_app = device_factory.get_current_app(self.agent_config.device_id)
+        current_app = get_current_app(
+            wda_url=self.agent_config.wda_url, session_id=self.agent_config.session_id
+        )
 
         # Build messages
         if is_first:
@@ -179,7 +196,7 @@ class PhoneAgent:
             response = self.model_client.request(self._context)
         except Exception as e:
             if self.agent_config.verbose:
-                logger.error(traceback.format_exc())
+                traceback.print_exc()
             return StepResult(
                 success=False,
                 finished=True,
@@ -193,11 +210,11 @@ class PhoneAgent:
             action = parse_action(response.action)
         except ValueError:
             if self.agent_config.verbose:
-                logger.error(traceback.format_exc())
+                traceback.print_exc()
             action = finish(message=response.action)
 
         if self.agent_config.verbose:
-            # Print thinking process and action
+            # Print thinking process
             msgs = get_messages(self.agent_config.lang)
             print("\n" + "=" * 50)
             print(f"💭 {msgs['thinking']}:")
@@ -218,7 +235,7 @@ class PhoneAgent:
             )
         except Exception as e:
             if self.agent_config.verbose:
-                logger.error(traceback.format_exc())
+                traceback.print_exc()
             result = self.action_handler.execute(
                 finish(message=str(e)), screenshot.width, screenshot.height
             )
@@ -235,9 +252,11 @@ class PhoneAgent:
 
         if finished and self.agent_config.verbose:
             msgs = get_messages(self.agent_config.lang)
-            logger.info(
+            print("\n" + "🎉 " + "=" * 48)
+            print(
                 f"✅ {msgs['task_completed']}: {result.message or action.get('message', msgs['done'])}"
             )
+            print("=" * 50 + "\n")
 
         return StepResult(
             success=result.success,
